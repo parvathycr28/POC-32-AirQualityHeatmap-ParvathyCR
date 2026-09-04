@@ -1,0 +1,1472 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+app/
+  components/
+    air-quality-chart.tsx
+    air-quality-dashboard.tsx
+    air-quality-map.tsx
+    city-search-select.tsx
+    intelligence-sidebar.tsx
+    leaflet-map.tsx
+  lib/
+    api.ts
+  favicon.ico
+  globals.css
+  layout.tsx
+  page.tsx
+public/
+  file.svg
+  globe.svg
+  next.svg
+  vercel.svg
+  window.svg
+.gitignore
+AGENTS.md
+CLAUDE.md
+eslint.config.mjs
+next.config.ts
+package.json
+postcss.config.mjs
+README.md
+tsconfig.json
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="app/components/air-quality-chart.tsx">
+"use client";
+
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+
+type ChartPoint = {
+  city: string;
+  value: number;
+};
+
+type AirQualityChartProps = {
+  data: ChartPoint[];
+  pollutant: string;
+};
+
+export default function AirQualityChart({
+  data,
+  pollutant,
+}: AirQualityChartProps) {
+  return (
+    <div className="rounded-xl border border-[#1F2937] bg-[#0B1117] p-4">
+      <div className="mb-4">
+        <div className="text-xs uppercase tracking-[0.18em] text-slate-500">
+          AIR QUALITY TREND
+        </div>
+
+        <div className="mt-1 text-sm text-slate-300">
+          {pollutant.toUpperCase()} measurement comparison
+        </div>
+      </div>
+
+      <div className="h-[260px] w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data}>
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="#1F2937"
+            />
+
+            <XAxis
+              dataKey="city"
+              tick={{
+                fill: "#94A3B8",
+                fontSize: 11,
+              }}
+              axisLine={{
+                stroke: "#1F2937",
+              }}
+              tickLine={false}
+            />
+
+            <YAxis
+              tick={{
+                fill: "#94A3B8",
+                fontSize: 11,
+              }}
+              axisLine={{
+                stroke: "#1F2937",
+              }}
+              tickLine={false}
+            />
+
+            <Tooltip
+  contentStyle={{
+    backgroundColor: "#0B1117",
+    border: "1px solid #1F2937",
+    borderRadius: "8px",
+  }}
+  labelStyle={{
+    color: "#94A3B8",
+  }}
+  formatter={(value) => [`${value} µg/m³`, "PM2.5"]}
+  labelFormatter={(label) => `City: ${label}`}
+/>
+
+            <Line
+              type="monotone"
+              dataKey="value"
+              stroke="#38BDF8"
+              strokeWidth={2}
+              dot={{
+                r: 4,
+              }}
+              activeDot={{
+                r: 6,
+              }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="app/components/air-quality-dashboard.tsx">
+"use client";
+
+import { useEffect, useState } from "react";
+
+import {
+  getAirQuality,
+  type AirQualityFeature,
+} from "../lib/api";
+
+import AirQualityMap from "./air-quality-map";
+import IntelligenceSidebar from "./intelligence-sidebar";
+import AirQualityChart from "./air-quality-chart";
+import CitySearchSelect from "./city-search-select";
+export default function AirQualityDashboard() {
+  const [features, setFeatures] = useState<AirQualityFeature[]>([]);
+
+  const [error, setError] = useState<string | null>(null);
+
+  const [loading, setLoading] = useState(true);
+
+  const [pollutant, setPollutant] = useState("pm25");
+
+  const [cityA, setCityA] = useState("");
+
+  const [cityB, setCityB] = useState("");
+
+
+  const cityAData = features.find(
+  (feature) => feature.properties.city === cityA
+);
+
+const cityBData = features.find(
+  (feature) => feature.properties.city === cityB
+);
+  const downloadSampleData = () => {
+
+  const json = JSON.stringify(features, null, 2);
+
+  const blob = new Blob([json], {
+    type: "application/json",
+  });
+
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = `air-quality-${pollutant}.json`;
+
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  URL.revokeObjectURL(url);
+};
+
+   const selectedCity =
+  cityA || features[0]?.properties.city || "";
+
+  const chartData = features
+  .filter(
+    (feature) =>
+      feature.properties.city === cityA ||
+      feature.properties.city === cityB
+  )
+  .map((feature) => ({
+    timestamp: feature.properties.timestamp,
+    value: feature.properties.value,
+    city: feature.properties.city,
+  }))
+  .sort(
+    (a, b) =>
+      new Date(a.timestamp).getTime() -
+      new Date(b.timestamp).getTime()
+  );
+
+  const cities = Array.from(
+  new Set(
+    features
+      .map(
+        (feature) => feature.properties.city
+      )
+      .filter(Boolean)
+  )
+).sort((a, b) =>
+  a.localeCompare(b)
+);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setLoading(true);
+        setError(null);
+        console.log("AIR QUALITY FUNCTION RUNNING");
+        const response = await getAirQuality(pollutant);
+
+        setFeatures(response.features);
+        console.log("FEATURE COUNT:", response.features?.length);
+        console.log("FIRST FEATURE:", response.features?.[0]);
+        console.log("FastAPI air-quality response:", response);
+      } catch (err) {
+        console.error("Air quality request failed:", err);
+
+        setError("Unable to load air-quality data.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadData();
+  }, [pollutant]);
+
+
+  return (
+    <main className="min-h-screen bg-[#030712] text-white">
+      {/* HEADER */}
+      <header className="border-b border-[#1F2937] px-6 py-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-xs uppercase tracking-[0.2em] text-[#38BDF8]">
+              REAL RAILS / DATA & INTELLIGENCE
+            </div>
+
+            <h1 className="mt-2 text-2xl font-semibold">
+              Air Quality Heatmap
+            </h1>
+          </div>
+
+          <div className="text-xs uppercase tracking-wider text-slate-500">
+            {loading ? "LOADING DATA" : "LIVE DATA"}
+          </div>
+        </div>
+      </header>
+
+      {/* 70 / 30 LAYOUT */}
+      <div className="grid min-h-[calc(100vh-89px)] grid-cols-1 lg:grid-cols-[70%_30%]">
+        {/* MAIN STAGE — 70% */}
+        <section className="min-w-0 border-b border-[#1F2937] p-5 lg:border-b-0 lg:border-r">
+
+          {/* FILTER BAR */}
+          <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                DATA FILTER
+              </div>
+
+              <h2 className="mt-1 text-lg font-semibold">
+                Air Quality Map
+              </h2>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <label
+                htmlFor="pollutant"
+                className="text-xs uppercase tracking-wider text-slate-500"
+              >
+                Pollutant
+              </label>
+
+              
+<select
+  value={pollutant}
+  onChange={(event) => {
+    setPollutant(event.target.value);
+  }}
+>
+  <option value="pm25">PM2.5</option>
+  <option value="pm10">PM10</option>
+  <option value="no2">NO₂</option>
+  <option value="so2">SO₂</option>
+  <option value="co">CO</option>
+  <option value="o3">O₃</option>
+</select>
+
+
+
+              <button
+                type="button"
+                onClick={downloadSampleData}
+                disabled={features.length === 0}
+                className="rounded-md border border-[#1F2937] bg-[#0B1117] px-3 py-2 text-xs font-medium text-slate-300 transition hover:border-[#38BDF8] hover:text-[#38BDF8] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Download Data
+              </button>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+  
+  <span className="text-xs uppercase tracking-wider text-slate-500">
+    Compare
+  </span>
+
+  {/* CITY A */}
+  <CitySearchSelect
+    cities={cities}
+    value={cityA}
+    onChange={setCityA}
+    placeholder="Search/select city A"
+  />
+
+  <span className="text-xs text-slate-600">
+    vs
+  </span>
+
+  {/* CITY B */}
+  <CitySearchSelect
+    cities={cities}
+    value={cityB}
+    onChange={setCityB}
+    placeholder="Search/select city B"
+  />
+</div>
+</div>
+
+{cityA && cityB && (
+  <div className="mt-4 rounded-lg border border-[#1F2937] bg-[#0B1117] p-4">
+    {(() => {
+      const featureA = features.find(
+        (feature) =>
+          feature.properties.city === cityA
+      );
+
+      const featureB = features.find(
+        (feature) =>
+          feature.properties.city === cityB
+      );
+
+      if (!featureA || !featureB) {
+        return (
+          <p className="text-sm text-slate-500">
+            Comparison data unavailable.
+          </p>
+        );
+      }
+
+      const difference =
+        featureA.properties.value -
+        featureB.properties.value;
+
+      const percentage =
+        featureB.properties.value !== 0
+          ? (difference /
+              featureB.properties.value) *
+            100
+          : 0;
+
+      return (
+        <div>
+          <div className="text-xs uppercase tracking-wider text-slate-500">
+            CITY COMPARISON
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-4">
+            <div>
+              <div className="text-sm text-slate-400">
+                {cityA}
+              </div>
+
+              <div className="mt-1 text-2xl font-semibold text-[#38BDF8]">
+                {featureA.properties.value}
+              </div>
+
+              <div className="text-xs text-slate-500">
+                {featureA.properties.unit}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-sm text-slate-400">
+                {cityB}
+              </div>
+
+              <div className="mt-1 text-2xl font-semibold text-[#818CF8]">
+                {featureB.properties.value}
+              </div>
+
+              <div className="text-xs text-slate-500">
+                {featureB.properties.unit}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 border-t border-[#1F2937] pt-3 text-sm text-slate-300">
+            {cityA} is{" "}
+            <span className="font-semibold text-white">
+              {Math.abs(percentage).toFixed(1)}%
+            </span>{" "}
+            {difference >= 0
+              ? "higher"
+              : "lower"}{" "}
+            than {cityB}.
+          </div>
+        </div>
+      );
+    })()}
+  </div>
+)}
+
+
+            </div>
+          
+
+          {/* MAP CARD */}
+          <div className="h-[600px] min-h-[500px] overflow-hidden rounded-xl border border-[#1F2937] bg-[#0B1117]">
+
+           {error ? (
+  <div className="flex h-full items-center justify-center">
+    <div className="max-w-md text-center">
+      <p className="text-red-400">
+        {error}
+      </p>
+
+      <p className="mt-2 text-sm text-slate-500">
+        The air-quality service is currently
+        unavailable.
+      </p>
+    </div>
+  </div>
+) : loading ? (
+  <div className="flex h-full items-center justify-center">
+    <div className="text-center">
+      <div className="text-sm uppercase tracking-wider text-[#38BDF8]">
+        Loading air-quality data
+      </div>
+
+      <div className="mt-2 text-xs text-slate-500">
+        Preparing map and intelligence layer...
+      </div>
+    </div>
+  </div>
+) : features.length === 0 ? (
+  <div className="flex h-full items-center justify-center">
+    <div className="text-center">
+      <p className="text-sm text-slate-300">
+        No air-quality observations available.
+      </p>
+
+      <p className="mt-2 text-xs text-slate-500">
+        Try another pollutant or refresh the data.
+      </p>
+    </div>
+  </div>
+) : (
+  <AirQualityMap
+  features={features}
+  pollutant={pollutant}
+/>
+)}
+
+          </div>
+          <div className="mt-5">
+            <AirQualityChart
+              data={chartData}
+              pollutant={pollutant}
+            />
+          </div>
+        </section>
+
+        {/* INTELLIGENCE SIDEBAR — 30% */}
+        <IntelligenceSidebar
+          features={features}
+          loading={loading}
+        />
+
+      </div>
+    </main>
+  ); 
+}
+</file>
+
+<file path="app/components/air-quality-map.tsx">
+"use client";
+
+import dynamic from "next/dynamic";
+
+import type { AirQualityFeature } from "../lib/api";
+
+type AirQualityMapProps = {
+  features: AirQualityFeature[];
+  pollutant: string;
+};
+
+const Map = dynamic(
+  () => import("./leaflet-map"),
+  {
+    ssr: false,
+  }
+);
+
+export default function AirQualityMap({
+  features,
+  pollutant,
+}: AirQualityMapProps) {
+  return (
+    <div className="h-full w-full">
+      <Map
+        features={features}
+        pollutant={pollutant}
+      />
+    </div>
+  );
+}
+</file>
+
+<file path="app/components/city-search-select.tsx">
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+
+type CitySearchSelectProps = {
+  cities: string[];
+  value: string;
+  onChange: (city: string) => void;
+  placeholder?: string;
+};
+
+export default function CitySearchSelect({
+  cities,
+  value,
+  onChange,
+  placeholder = "Search/select city",
+}: CitySearchSelectProps) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const filteredCities = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    if (!query) {
+      return cities;
+    }
+
+    return cities.filter((city) =>
+      city.toLowerCase().includes(query)
+    );
+  }, [cities, search]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(
+          event.target as Node
+        )
+      ) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener(
+      "mousedown",
+      handleClickOutside
+    );
+
+    return () => {
+      document.removeEventListener(
+        "mousedown",
+        handleClickOutside
+      );
+    };
+  }, []);
+
+  function handleOpen() {
+    setOpen(true);
+
+    // When opening an already-selected city,
+    // start with an empty search so the full list is visible.
+    setSearch("");
+  }
+
+  function handleSelect(city: string) {
+    onChange(city);
+    setSearch("");
+    setOpen(false);
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative w-64"
+    >
+      {/* SEARCH / SELECT CONTROL */}
+  <input
+  type="text"
+  role="combobox"
+  aria-label={placeholder}
+  aria-expanded={open}
+  aria-haspopup="listbox"
+  aria-controls="city-search-listbox"
+  aria-autocomplete="list"
+  value={open ? search : value}
+  onFocus={handleOpen}
+  onChange={(event) => {
+    setSearch(event.target.value);
+    setOpen(true);
+  }}
+  placeholder={placeholder}
+  className="w-full rounded-md border border-[#1F2937] bg-[#0B1117] px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-[#38BDF8]"
+/>
+
+      {/* DROPDOWN */}
+      {open && (
+        <div 
+          id="city-search-listbox"
+          role="listbox"
+          aria-label={`${placeholder} options`}
+          className="absolute z-[1000] mt-1 max-h-72 w-full overflow-y-auto rounded-md border border-[#1F2937] bg-[#0B1117] shadow-xl">
+          {filteredCities.length === 0 ? (
+            <div className="px-3 py-3 text-sm text-slate-500">
+              No cities found
+            </div>
+          ) : (
+            filteredCities.map((city, index) => (
+              <button
+                type="button"
+                role="option"
+                aria-selected={city === value}
+
+                key={`${city}-${index}`}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                }}
+                onClick={() => handleSelect(city)}
+                className={`block w-full px-3 py-2 text-left text-sm transition ${
+                  city === value
+                    ? "bg-[#111827] text-[#38BDF8]"
+                    : "text-slate-300 hover:bg-[#111827] hover:text-white"
+                }`}
+              >
+                {city}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+</file>
+
+<file path="app/components/intelligence-sidebar.tsx">
+"use client";
+
+import type { AirQualityFeature } from "../lib/api";
+
+type IntelligenceSidebarProps = {
+  features: AirQualityFeature[];
+  loading: boolean;
+};
+
+export default function IntelligenceSidebar({
+  features,
+  loading,
+}: IntelligenceSidebarProps) {
+  const firstFeature = features[0];
+
+  return (
+    <aside className="h-full overflow-y-auto border-l border-[#1F2937] bg-[#0B1117] p-6">
+      {/* HEADER */}
+      <div className="text-xs uppercase tracking-[0.18em] text-[#38BDF8]">
+        AIR QUALITY INTELLIGENCE
+      </div>
+
+      <h2 className="mt-3 text-2xl font-semibold text-white">
+        Pollution & Exposure
+      </h2>
+
+      <p className="mt-2 text-sm leading-6 text-slate-400">
+        Pollution measurements are transformed into
+        city-level exposure intelligence.
+      </p>
+
+      {/* CURRENT MEASUREMENT */}
+      <div className="mt-8 border-t border-[#1F2937] pt-6">
+        <div className="text-xs uppercase tracking-wider text-slate-500">
+          Current Measurement
+        </div>
+
+        {loading ? (
+          <p className="mt-3 text-sm text-slate-400">
+            Loading air-quality data...
+          </p>
+        ) : firstFeature ? (
+          <div className="mt-3">
+            <div className="text-3xl font-semibold text-[#38BDF8]">
+              {firstFeature.properties.value}
+            </div>
+
+            <div className="mt-1 text-sm text-slate-400">
+              {firstFeature.properties.unit}
+            </div>
+
+            <div className="mt-3 text-sm text-white">
+              {firstFeature.properties.city}
+            </div>
+
+            <div className="mt-1 text-xs text-slate-500">
+              {firstFeature.properties.pollutant}
+            </div>
+          </div>
+        ) : (
+          <p className="mt-3 text-sm text-slate-500">
+            No air-quality data available.
+          </p>
+        )}
+      </div>
+
+      {/* EXPOSURE SCORE */}
+      <div className="mt-8 border-t border-[#1F2937] pt-6">
+        <div className="text-xs uppercase tracking-wider text-slate-500">
+          Exposure Score
+        </div>
+
+        {firstFeature ? (
+          <div className="mt-3">
+            <div className="text-2xl font-semibold text-white">
+              {firstFeature.properties.exposure_score ?? "—"}
+            </div>
+
+            <p className="mt-2 text-sm text-slate-400">
+              A higher score indicates greater measured
+              pollution exposure.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-3 text-sm text-slate-500">
+            —
+          </div>
+        )}
+      </div>
+
+      {/* WHY THIS MATTERS */}
+      <div className="mt-8 border-t border-[#1F2937] pt-6">
+        <div className="text-xs uppercase tracking-wider text-slate-500">
+          Why This Matters
+        </div>
+
+        <p className="mt-3 text-sm leading-6 text-slate-300">
+          Air pollution is more than an environmental
+          statistic. Mapping pollution alongside population
+          exposure helps identify where poor air quality can
+          affect the greatest number of people.
+        </p>
+      </div>
+
+      {/* WHO CONTROLS THE RAIL */}
+      <div className="mt-8 border-t border-[#1F2937] pt-6">
+        <div className="text-xs uppercase tracking-wider text-slate-500">
+          Who Controls the Rail
+        </div>
+
+        <p className="mt-3 text-sm leading-6 text-slate-300">
+          Public agencies, environmental regulators, data
+          providers, and technology platforms shape how air
+          quality is measured, interpreted, and acted upon.
+        </p>
+      </div>
+
+      {/* SOURCE */}
+      {firstFeature && (
+        <div className="mt-8 border-t border-[#1F2937] pt-6">
+          <div className="text-xs uppercase tracking-wider text-slate-500">
+            Data Source
+          </div>
+
+          <p className="mt-3 text-sm text-slate-300">
+            {firstFeature.properties.source ?? "Unknown"}
+          </p>
+        </div>
+      )}
+    </aside>
+  );
+}
+</file>
+
+<file path="app/components/leaflet-map.tsx">
+"use client";
+import { useEffect ,useState} from "react";
+
+import {
+  CircleMarker,
+  MapContainer,
+  Popup,
+  TileLayer,
+  useMap,
+} from "react-leaflet";
+
+import "leaflet/dist/leaflet.css";
+
+import {
+  getPopulation,
+  type AirQualityFeature,
+} from "../lib/api";
+
+type LeafletMapProps = {
+  features: AirQualityFeature[];
+  pollutant: string;
+};
+function FitMapToFeatures({
+  features,
+}: {
+  features: AirQualityFeature[];
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    const points = features
+      .map((feature) => {
+        const coordinates = feature.geometry?.coordinates;
+
+        if (
+          !Array.isArray(coordinates) ||
+          coordinates.length < 2
+        ) {
+          return null;
+        }
+
+        const [longitude, latitude] = coordinates;
+
+        if (
+          !Number.isFinite(longitude) ||
+          !Number.isFinite(latitude)
+        ) {
+          return null;
+        }
+
+        return [latitude, longitude] as [
+          number,
+          number
+        ];
+      })
+      .filter(
+        (
+          point
+        ): point is [number, number] => point !== null
+      );
+
+    if (points.length === 0) {
+      return;
+    }
+
+    map.fitBounds(points, {
+      padding: [40, 40],
+      maxZoom: 4,
+    });
+  }, [features, map]);
+
+  return null;
+}
+export default function LeafletMap({
+  features,
+  pollutant,
+}: LeafletMapProps) {
+    const [populationByPoint, setPopulationByPoint] = useState<
+    Record<string, number | null>
+  >({});
+  return (
+    <MapContainer
+      center={[20, 0]}
+      zoom={5}
+      className="h-full w-full"
+    >
+      <TileLayer
+  attribution='&copy; OpenStreetMap contributors &copy; CARTO'
+  url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+/>
+      <FitMapToFeatures features={features} />
+  {features
+    .filter((feature) => {
+      const value = feature.properties.value;
+      const coordinates = feature.geometry?.coordinates;
+
+      return (
+        Number.isFinite(value) &&
+        value >= 0 &&
+        Array.isArray(coordinates) &&
+        coordinates.length >= 2 &&
+        Number.isFinite(coordinates[0]) &&
+        Number.isFinite(coordinates[1])
+      );
+    })
+    .map((feature, index) => {
+      const {
+        city,
+        country,
+        value,
+        unit,
+        timestamp,
+        population,
+        exposure_score,
+        regional_average,
+        percentage_above_regional_average,
+        source,
+      } = feature.properties;
+
+      const [longitude, latitude] = feature.geometry.coordinates;
+
+      return (
+        <CircleMarker
+          key={`${city}-${timestamp}-${latitude}-${longitude}-${index}`}
+          center={[latitude, longitude]}
+          radius={8}
+          pathOptions={{
+            color: "#FFFFFF",
+            weight: 2,
+            fillColor:"#38BDF8",   
+            fillOpacity: 0.9,
+          }}
+        >
+        <Popup
+  eventHandlers={{
+    add: async () => {
+      const key = `${latitude},${longitude}`;
+
+      if (populationByPoint[key] !== undefined) {
+        return;
+      }
+
+      const population = await getPopulation(
+        latitude,
+        longitude
+      );
+
+      setPopulationByPoint((current) => ({
+        ...current,
+        [key]: population,
+      }));
+    },
+  }}
+>
+<div className="h-full w-full overflow-hidden rounded-xl border border-[#1F2937] bg-[#030712] p-4 text-white">
+  <div className="text-lg font-semibold">
+    {city}
+  </div>
+
+  <div className="text-sm text-slate-300">
+    {country}
+  </div>
+
+  <div className="mt-2">
+    {pollutant}: {value} {unit}
+  </div>
+
+  <div>
+    Exposure score:{" "}
+    {exposure_score ?? "—"}
+  </div>
+
+  <div>
+    Population:{" "}
+    {populationByPoint[
+      `${latitude},${longitude}`
+    ] !== undefined
+      ? populationByPoint[
+          `${latitude},${longitude}`
+        ] !== null
+        ? Math.round(
+            populationByPoint[
+              `${latitude},${longitude}`
+            ] as number
+          ).toLocaleString()
+        : "Unavailable"
+      : "Loading..."}
+  </div>
+
+  <div>
+    Regional average:{" "}
+    {regional_average ?? "—"} {unit}
+  </div>
+
+  <div>
+    Above regional average:{" "}
+    {percentage_above_regional_average !==
+    undefined
+      ? `${percentage_above_regional_average.toFixed(1)}%`
+      : "—"}
+  </div>
+
+  <div>
+    Source: {source ?? "Unknown"}
+  </div>
+</div>
+        </Popup>
+      </CircleMarker>
+    );
+  })}
+  </MapContainer>
+);
+}
+</file>
+
+<file path="app/lib/api.ts">
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://127.0.0.1:8001";
+
+export type AirQualityFeature = {
+  type: "Feature";
+
+  properties: {
+    city: string;
+    country: string;
+    pollutant: string;
+    value: number;
+    unit: string;
+    timestamp: string;
+    population?: number;
+    exposure_score?: number;
+    regional_average?: number;
+    percentage_above_regional_average?: number;
+    source?: string;
+    fallback?: boolean;
+    generated_at?: string;
+  };
+
+  geometry: {
+    type: "Point";
+    coordinates: [number, number];
+  };
+};
+
+export type AirQualityResponse = {
+  type: "FeatureCollection";
+
+  features: AirQualityFeature[];
+
+  fallback?: boolean;
+
+  generated_at?: string;
+};
+
+export async function getAirQuality(
+  pollutant: string = "pm25"
+): Promise<AirQualityResponse> {
+  const response = await fetch(
+    `${API_URL}/api/air-quality?pollutant=${encodeURIComponent(
+      pollutant
+    )}`,
+    {
+      cache: "no-store",
+    }
+  );
+
+  
+if (!response.ok) {
+  let message = `Air quality request failed: ${response.status}`;
+
+  try {
+    const errorBody = await response.json();
+
+    if (errorBody?.detail) {
+      message =
+        typeof errorBody.detail === "string"
+          ? errorBody.detail
+          : JSON.stringify(errorBody.detail);
+    }
+  } catch {
+    // Keep the default HTTP error message.
+  }
+
+  throw new Error(message);
+}
+
+
+
+  return response.json();
+}
+export async function getPopulation(
+  latitude: number,
+  longitude: number
+): Promise<number | null> {
+  const response = await fetch(
+    `${API_URL}/api/population?latitude=${encodeURIComponent(
+      latitude
+    )}&longitude=${encodeURIComponent(longitude)}`,
+    {
+      cache: "no-store",
+    }
+  );
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const data = await response.json();
+
+  return typeof data.population === "number"
+    ? data.population
+    : null;
+}
+</file>
+
+<file path="app/globals.css">
+@import "tailwindcss";
+
+:root {
+  --background: #030712;
+  --foreground: #ededed;
+}
+/* Tailwind CSS v4 custom at-rule */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  background: #030712;
+}
+
+body {
+  min-height: 100vh;
+  background: #030712;
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+</file>
+
+<file path="app/layout.tsx">
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Air Quality Heatmap | Real Rails Data & Intelligence",
+  description:
+    "Interactive air quality intelligence dashboard for pollution, population exposure, and city comparison.",
+};
+
+export default function RootLayout({ children }: LayoutProps<"/">) {
+  return (
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col">{children}</body>
+    </html>
+  );
+}
+</file>
+
+<file path="app/page.tsx">
+import AirQualityDashboard from "./components/air-quality-dashboard";
+
+export default function Home() {
+  return <AirQualityDashboard />;
+}
+</file>
+
+<file path="public/file.svg">
+<svg fill="none" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M14.5 13.5V5.41a1 1 0 0 0-.3-.7L9.8.29A1 1 0 0 0 9.08 0H1.5v13.5A2.5 2.5 0 0 0 4 16h8a2.5 2.5 0 0 0 2.5-2.5m-1.5 0v-7H8v-5H3v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1M9.5 5V2.12L12.38 5zM5.13 5h-.62v1.25h2.12V5zm-.62 3h7.12v1.25H4.5zm.62 3h-.62v1.25h7.12V11z" clip-rule="evenodd" fill="#666" fill-rule="evenodd"/></svg>
+</file>
+
+<file path="public/globe.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g clip-path="url(#a)"><path fill-rule="evenodd" clip-rule="evenodd" d="M10.27 14.1a6.5 6.5 0 0 0 3.67-3.45q-1.24.21-2.7.34-.31 1.83-.97 3.1M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m.48-1.52a7 7 0 0 1-.96 0H7.5a4 4 0 0 1-.84-1.32q-.38-.89-.63-2.08a40 40 0 0 0 3.92 0q-.25 1.2-.63 2.08a4 4 0 0 1-.84 1.31zm2.94-4.76q1.66-.15 2.95-.43a7 7 0 0 0 0-2.58q-1.3-.27-2.95-.43a18 18 0 0 1 0 3.44m-1.27-3.54a17 17 0 0 1 0 3.64 39 39 0 0 1-4.3 0 17 17 0 0 1 0-3.64 39 39 0 0 1 4.3 0m1.1-1.17q1.45.13 2.69.34a6.5 6.5 0 0 0-3.67-3.44q.65 1.26.98 3.1M8.48 1.5l.01.02q.41.37.84 1.31.38.89.63 2.08a40 40 0 0 0-3.92 0q.25-1.2.63-2.08a4 4 0 0 1 .85-1.32 7 7 0 0 1 .96 0m-2.75.4a6.5 6.5 0 0 0-3.67 3.44 29 29 0 0 1 2.7-.34q.31-1.83.97-3.1M4.58 6.28q-1.66.16-2.95.43a7 7 0 0 0 0 2.58q1.3.27 2.95.43a18 18 0 0 1 0-3.44m.17 4.71q-1.45-.12-2.69-.34a6.5 6.5 0 0 0 3.67 3.44q-.65-1.27-.98-3.1" fill="#666"/></g><defs><clipPath id="a"><path fill="#fff" d="M0 0h16v16H0z"/></clipPath></defs></svg>
+</file>
+
+<file path="public/next.svg">
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 394 80"><path fill="#000" d="M262 0h68.5v12.7h-27.2v66.6h-13.6V12.7H262V0ZM149 0v12.7H94v20.4h44.3v12.6H94v21h55v12.6H80.5V0h68.7zm34.3 0h-17.8l63.8 79.4h17.9l-32-39.7 32-39.6h-17.9l-23 28.6-23-28.6zm18.3 56.7-9-11-27.1 33.7h17.8l18.3-22.7z"/><path fill="#000" d="M81 79.3 17 0H0v79.3h13.6V17l50.2 62.3H81Zm252.6-.4c-1 0-1.8-.4-2.5-1s-1.1-1.6-1.1-2.6.3-1.8 1-2.5 1.6-1 2.6-1 1.8.3 2.5 1a3.4 3.4 0 0 1 .6 4.3 3.7 3.7 0 0 1-3 1.8zm23.2-33.5h6v23.3c0 2.1-.4 4-1.3 5.5a9.1 9.1 0 0 1-3.8 3.5c-1.6.8-3.5 1.3-5.7 1.3-2 0-3.7-.4-5.3-1s-2.8-1.8-3.7-3.2c-.9-1.3-1.4-3-1.4-5h6c.1.8.3 1.6.7 2.2s1 1.2 1.6 1.5c.7.4 1.5.5 2.4.5 1 0 1.8-.2 2.4-.6a4 4 0 0 0 1.6-1.8c.3-.8.5-1.8.5-3V45.5zm30.9 9.1a4.4 4.4 0 0 0-2-3.3 7.5 7.5 0 0 0-4.3-1.1c-1.3 0-2.4.2-3.3.5-.9.4-1.6 1-2 1.6a3.5 3.5 0 0 0-.3 4c.3.5.7.9 1.3 1.2l1.8 1 2 .5 3.2.8c1.3.3 2.5.7 3.7 1.2a13 13 0 0 1 3.2 1.8 8.1 8.1 0 0 1 3 6.5c0 2-.5 3.7-1.5 5.1a10 10 0 0 1-4.4 3.5c-1.8.8-4.1 1.2-6.8 1.2-2.6 0-4.9-.4-6.8-1.2-2-.8-3.4-2-4.5-3.5a10 10 0 0 1-1.7-5.6h6a5 5 0 0 0 3.5 4.6c1 .4 2.2.6 3.4.6 1.3 0 2.5-.2 3.5-.6 1-.4 1.8-1 2.4-1.7a4 4 0 0 0 .8-2.4c0-.9-.2-1.6-.7-2.2a11 11 0 0 0-2.1-1.4l-3.2-1-3.8-1c-2.8-.7-5-1.7-6.6-3.2a7.2 7.2 0 0 1-2.4-5.7 8 8 0 0 1 1.7-5 10 10 0 0 1 4.3-3.5c2-.8 4-1.2 6.4-1.2 2.3 0 4.4.4 6.2 1.2 1.8.8 3.2 2 4.3 3.4 1 1.4 1.5 3 1.5 5h-5.8z"/></svg>
+</file>
+
+<file path="public/vercel.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1155 1000"><path d="m577.3 0 577.4 1000H0z" fill="#fff"/></svg>
+</file>
+
+<file path="public/window.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 2.5h13v10a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1zM0 1h16v11.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 0 12.5zm3.75 4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5M7 4.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0m1.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5" fill="#666"/></svg>
+</file>
+
+<file path=".gitignore">
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+</file>
+
+<file path="AGENTS.md">
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
+</file>
+
+<file path="CLAUDE.md">
+@AGENTS.md
+</file>
+
+<file path="eslint.config.mjs">
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTs from "eslint-config-next/typescript";
+
+const eslintConfig = defineConfig([
+  ...nextVitals,
+  ...nextTs,
+  // Override default ignores of eslint-config-next.
+  globalIgnores([
+    // Default ignores of eslint-config-next:
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+  ]),
+]);
+
+export default eslintConfig;
+</file>
+
+<file path="next.config.ts">
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  /* config options here */
+};
+
+export default nextConfig;
+</file>
+
+<file path="package.json">
+{
+  "name": "frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "leaflet": "^1.9.4",
+    "lucide-react": "^1.33.0",
+    "next": "16.3.2",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-leaflet": "^5.0.0",
+    "recharts": "^3.10.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/leaflet": "^1.9.22",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.2",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
+</file>
+
+<file path="postcss.config.mjs">
+const config = {
+  plugins: {
+    "@tailwindcss/postcss": {},
+  },
+};
+
+export default config;
+</file>
+
+<file path="README.md">
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+
+## Getting Started
+
+First, run the development server:
+
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+
+## Learn More
+
+To learn more about Next.js, take a look at the following resources:
+
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+
+## Deploy on Vercel
+
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "**/*.mts"
+  ],
+  "exclude": ["node_modules"]
+}
+</file>
+
+</files>
