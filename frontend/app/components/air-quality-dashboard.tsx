@@ -1,369 +1,1018 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Activity,
+  Download,
+  Layers,
+  MapPin,
+  RefreshCw,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
+
+import AirQualityMap from "./air-quality-map";
+import CitySearchSelect from "./city-search-select";
+import IntelligenceSidebar from "./intelligence-sidebar";
 
 import {
   getAirQuality,
   type AirQualityFeature,
 } from "../lib/api";
 
-import AirQualityMap from "./air-quality-map";
-import IntelligenceSidebar from "./intelligence-sidebar";
-import AirQualityChart from "./air-quality-chart";
-import CitySearchSelect from "./city-search-select";
-export default function AirQualityDashboard() {
-  const [features, setFeatures] = useState<AirQualityFeature[]>([]);
-
-  const [error, setError] = useState<string | null>(null);
-
-  const [loading, setLoading] = useState(true);
-
-  const [pollutant, setPollutant] = useState("pm25");
-
-  const [cityA, setCityA] = useState("");
-
-  const [cityB, setCityB] = useState("");
-
-  const [selectedCity, setSelectedCity] = useState("");
-  const cityAData = features.find(
-  (feature) => feature.properties.city === cityA
-);
-
-const cityBData = features.find(
-  (feature) => feature.properties.city === cityB
-);
-  const downloadSampleData = () => {
-
-  const json = JSON.stringify(features, null, 2);
-
-  const blob = new Blob([json], {
-    type: "application/json",
-  });
-
-  const url = URL.createObjectURL(blob);
-
-  const link = document.createElement("a");
-
-  link.href = url;
-  link.download = `air-quality-${pollutant}.json`;
-
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-
-  URL.revokeObjectURL(url);
+type PollutantOption = {
+  label: string;
+  value: string;
 };
 
-  const chartData = features
-  .filter(
-    (feature) =>
-      feature.properties.city === cityA ||
-      feature.properties.city === cityB
-  )
-  .map((feature) => ({
-    timestamp: feature.properties.timestamp,
-    value: feature.properties.value,
-    city: feature.properties.city,
-  }))
-  .sort(
-    (a, b) =>
-      new Date(a.timestamp).getTime() -
-      new Date(b.timestamp).getTime()
-  );
+const POLLUTANTS: PollutantOption[] = [
+  {
+    label: "PM2.5",
+    value: "PM2.5",
+  },
+  {
+    label: "PM10",
+    value: "PM10",
+  },
+  {
+    label: "NO₂",
+    value: "NO2",
+  },
+  {
+    label: "SO₂",
+    value: "SO2",
+  },
+  {
+    label: "CO",
+    value: "CO",
+  },
+  {
+    label: "O₃",
+    value: "O3",
+  },
+];
 
-  const cities = Array.from(
-  new Set(
-    features
-      .map(
-        (feature) => feature.properties.city
-      )
-      .filter(Boolean)
-  )
-).sort((a, b) =>
-  a.localeCompare(b)
-);
+function formatValue(
+  value: number | null | undefined,
+): string {
+  if (
+    value == null ||
+    !Number.isFinite(value)
+  ) {
+    return "—";
+  }
 
-  useEffect(() => {
-    async function loadData() {
+  return value.toFixed(1);
+}
+
+function getPollutionStatus(
+  value: number | null | undefined,
+): {
+  label: string;
+  className: string;
+} {
+  if (
+    value == null ||
+    !Number.isFinite(value)
+  ) {
+    return {
+      label: "Unavailable",
+      className: "text-slate-500",
+    };
+  }
+
+  if (value <= 12) {
+    return {
+      label: "Good",
+      className: "text-green-400",
+    };
+  }
+
+  if (value <= 35) {
+    return {
+      label: "Moderate",
+      className: "text-yellow-400",
+    };
+  }
+
+  if (value <= 55) {
+    return {
+      label: "Unhealthy (SG)",
+      className: "text-orange-400",
+    };
+  }
+
+  if (value <= 150) {
+    return {
+      label: "Unhealthy",
+      className: "text-red-400",
+    };
+  }
+
+  return {
+    label: "Very Unhealthy",
+    className: "text-purple-400",
+  };
+}
+
+export default function AirQualityDashboard() {
+  /*
+   * =========================================================
+   * STATE
+   * =========================================================
+   */
+
+  const [features, setFeatures] =
+    useState<AirQualityFeature[]>([]);
+
+  const [pollutant, setPollutant] =
+    useState("PM2.5");
+
+  const [selectedCity, setSelectedCity] =
+    useState("");
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState<string | null>(null);
+
+  const [refreshKey, setRefreshKey] =
+    useState(0);
+
+  const [intelligenceOpen, setIntelligenceOpen] =
+    useState(false);
+
+  const [showSensors, setShowSensors] =
+    useState(true);
+
+  const [showHeatmap, setShowHeatmap] =
+    useState(false);
+
+  /*
+   * =========================================================
+   * LOAD AIR QUALITY DATA
+   * =========================================================
+   */
+
+  const loadData = useCallback(
+    async () => {
+      setLoading(true);
+      setError(null);
+
       try {
-        setLoading(true);
-        setError(null);
-        console.log("AIR QUALITY FUNCTION RUNNING");
-        const response = await getAirQuality(pollutant);
+        const response =
+          await getAirQuality(pollutant);
 
-        setFeatures(response.features);
-        console.log("FEATURE COUNT:", response.features?.length);
-        console.log("FIRST FEATURE:", response.features?.[0]);
-        console.log("FastAPI air-quality response:", response);
-      } catch (err) {
-        console.error("Air quality request failed:", err);
+        setFeatures(
+          response.features ?? [],
+        );
+      } catch (requestError) {
+        console.error(
+          "Air-quality request failed:",
+          requestError,
+        );
 
-        setError("Unable to load air-quality data.");
+        setFeatures([]);
+
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Unable to load air-quality data.",
+        );
       } finally {
         setLoading(false);
       }
+    },
+    [pollutant],
+  );
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData, refreshKey]);
+
+  /*
+   * =========================================================
+   * AVAILABLE CITIES
+   * =========================================================
+   */
+
+  const cities = useMemo(() => {
+    return Array.from(
+      new Set(
+        features
+          .map(
+            (feature) =>
+              feature.properties.city,
+          )
+          .filter(
+            (
+              city,
+            ): city is string =>
+              Boolean(city),
+          ),
+      ),
+    ).sort((a, b) =>
+      a.localeCompare(b),
+    );
+  }, [features]);
+
+  /*
+   * =========================================================
+   * SELECTED CITY FEATURE
+   * =========================================================
+   */
+
+  const selectedFeature = useMemo(() => {
+    if (!selectedCity) {
+      return null;
     }
 
-    loadData();
-  }, [pollutant]);
+    return (
+      features.find(
+        (feature) =>
+          feature.properties.city ===
+          selectedCity,
+      ) ?? null
+    );
+  }, [features, selectedCity]);
 
+  /*
+   * =========================================================
+   * CURRENT FEATURE
+   * =========================================================
+   */
+
+  const currentFeature =
+    selectedFeature ??
+    features[0] ??
+    null;
+
+  /*
+   * =========================================================
+   * CITY OVERVIEW
+   *
+   * This is a single-city overview.
+   * There is NO City A / City B comparison.
+   * =========================================================
+   */
+
+  const displayedCities = useMemo(() => {
+    return cities
+      .map((city) => {
+        const feature = features.find(
+          (item) =>
+            item.properties.city ===
+            city,
+        );
+
+        if (!feature) {
+          return null;
+        }
+
+        return {
+          city,
+          value: feature.properties.value,
+          unit: feature.properties.unit,
+          feature,
+        };
+      })
+      .filter(
+        (
+          item,
+        ): item is {
+          city: string;
+          value: number;
+          unit: string;
+          feature: AirQualityFeature;
+        } => item !== null,
+      )
+      .sort(
+        (a, b) => b.value - a.value,
+      )
+      .slice(0, 6);
+  }, [cities, features]);
+
+  /*
+   * =========================================================
+   * SELECT CITY FROM MAP
+   * =========================================================
+   */
+
+  const handleCitySelect = (
+    city: string,
+  ) => {
+    setSelectedCity(city);
+    setIntelligenceOpen(true);
+  };
+
+  /*
+   * =========================================================
+   * SELECT CITY FROM SEARCH
+   * =========================================================
+   */
+
+  const handleCityChange = (
+    city: string,
+  ) => {
+    setSelectedCity(city);
+
+    if (city) {
+      setIntelligenceOpen(true);
+    }
+  };
+
+  /*
+   * =========================================================
+   * DOWNLOAD CSV
+   * =========================================================
+   */
+
+  const downloadCsv = () => {
+    if (features.length === 0) {
+      return;
+    }
+
+    const headers = [
+      "City",
+      "Country",
+      "Pollutant",
+      "Value",
+      "Unit",
+      "Timestamp",
+      "Population",
+      "Exposure Score",
+      "Regional Average",
+    ];
+
+    const rows = features.map(
+      (feature) => {
+        const properties =
+          feature.properties;
+
+        return [
+          properties.city ?? "",
+          properties.country ?? "",
+          properties.pollutant ??
+            pollutant,
+          properties.value ?? "",
+          properties.unit ?? "",
+          properties.timestamp ?? "",
+          properties.population ?? "",
+          properties.exposure_score ?? "",
+          properties.regional_average ?? "",
+        ];
+      },
+    );
+
+    const csv = [
+      headers,
+      ...rows,
+    ]
+      .map((row) =>
+        row
+          .map(
+            (value) =>
+              `"${String(value).replaceAll(
+                '"',
+                '""',
+              )}"`,
+          )
+          .join(","),
+      )
+      .join("\n");
+
+    const blob = new Blob(
+      [csv],
+      {
+        type: "text/csv;charset=utf-8;",
+      },
+    );
+
+    const url =
+      URL.createObjectURL(blob);
+
+    const link =
+      document.createElement("a");
+
+    link.href = url;
+
+    link.download =
+      `air-quality-${pollutant.toLowerCase()}.csv`;
+
+    document.body.appendChild(link);
+
+    link.click();
+
+    document.body.removeChild(link);
+
+    URL.revokeObjectURL(url);
+  };
+
+  /*
+   * =========================================================
+   * CURRENT POLLUTION STATUS
+   * =========================================================
+   */
+
+  const currentStatus =
+    getPollutionStatus(
+      currentFeature?.properties.value,
+    );
+
+  /*
+   * =========================================================
+   * RENDER
+   * =========================================================
+   */
 
   return (
-    <main className="min-h-screen bg-[#030712] text-white">
-      {/* HEADER */}
-      <header className="border-b border-[#1F2937] px-6 py-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-xs uppercase tracking-[0.2em] text-[#38BDF8]">
-              REAL RAILS / DATA & INTELLIGENCE
+    <main className="min-h-screen overflow-x-hidden bg-[#030712] text-white">
+
+      {/* =====================================================
+          TOP HEADER
+          ===================================================== */}
+
+      <header className="border-b border-[#1F2937] bg-[#07111B]">
+        <div className="flex min-h-[80px] flex-col gap-4 px-5 py-4 xl:flex-row xl:items-center xl:justify-between">
+
+          {/* BRAND */}
+
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#38BDF8]/40 bg-[#38BDF8]/5">
+              <Activity className="h-7 w-7 text-[#38BDF8]" />
             </div>
 
-            <h1 className="mt-2 text-2xl font-semibold">
-              Air Quality Heatmap
-            </h1>
+            <div>
+              <h1 className="text-xl font-bold tracking-wide">
+                REAL RAILS
+              </h1>
+
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Intelligence Library
+              </p>
+            </div>
           </div>
 
-          <div className="text-xs uppercase tracking-wider text-slate-500">
-            {loading ? "LOADING DATA" : "LIVE DATA"}
+          {/* TITLE */}
+
+          <div className="flex-1 xl:px-8">
+            <h2 className="text-lg font-semibold">
+              Air Quality Heatmap
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-400">
+              Real-time Pollution & Exposure
+              Intelligence
+            </p>
+          </div>
+
+          {/* FILTERS */}
+
+          <div className="flex flex-col gap-3 sm:flex-row">
+
+            {/* POLLUTANT */}
+
+            <label className="relative min-w-[180px]">
+              <span className="absolute left-4 top-2 z-10 text-[11px] text-slate-500">
+                Pollutant
+              </span>
+
+              <select
+                value={pollutant}
+                onChange={(event) => {
+                  setPollutant(
+                    event.target.value,
+                  );
+
+                  setSelectedCity("");
+
+                  setIntelligenceOpen(
+                    false,
+                  );
+                }}
+                className="h-14 w-full appearance-none rounded-lg border border-[#1F2937] bg-[#0B1117] px-4 pb-1 pt-5 text-sm font-semibold text-white outline-none transition focus:border-[#38BDF8] focus:ring-1 focus:ring-[#38BDF8]/30"
+                aria-label="Select pollutant"
+              >
+                {POLLUTANTS.map(
+                  (option) => (
+                    <option
+                      key={option.value}
+                      value={option.value}
+                    >
+                      {option.label}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+
+            {/* CITY SEARCH */}
+
+            <CitySearchSelect
+              cities={cities}
+              value={selectedCity}
+              onChange={
+                handleCityChange
+              }
+              placeholder="Search city"
+            />
+
+            {/* REFRESH */}
+
+            <button
+              type="button"
+              onClick={() =>
+                setRefreshKey(
+                  (value) =>
+                    value + 1,
+                )
+              }
+              className="flex h-14 items-center justify-center rounded-lg border border-[#1F2937] bg-[#0B1117] px-4 text-slate-300 transition hover:border-[#38BDF8] hover:text-[#38BDF8] focus:outline-none focus:ring-2 focus:ring-[#38BDF8]/40"
+              aria-label="Refresh air quality data"
+              title="Refresh data"
+            >
+              <RefreshCw
+                className={
+                  loading
+                    ? "h-5 w-5 animate-spin"
+                    : "h-5 w-5"
+                }
+              />
+            </button>
           </div>
         </div>
       </header>
 
-      {/* 70 / 30 LAYOUT */}
-      <div className="grid min-h-[calc(100vh-89px)] grid-cols-1 lg:grid-cols-[70%_30%]">
-        {/* MAIN STAGE — 70% */}
-        <section className="min-w-0 border-b border-[#1F2937] p-5 lg:border-b-0 lg:border-r">
+      {/* =====================================================
+          SOURCE BAR
+          ===================================================== */}
 
-          {/* FILTER BAR */}
-          <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                DATA FILTER
-              </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1F2937] bg-[#050D16] px-5 py-3">
 
-              <h2 className="mt-1 text-lg font-semibold">
-                Air Quality Map
-              </h2>
-            </div>
+        <div className="flex items-center gap-2 text-xs text-slate-400">
+          <span className="h-2.5 w-2.5 rounded-full bg-green-400 shadow-[0_0_10px_rgba(74,222,128,0.6)]" />
 
-            <div className="flex flex-wrap items-center gap-3">
-              <label
-                htmlFor="pollutant"
-                className="text-xs uppercase tracking-wider text-slate-500"
-              >
-                Pollutant
-              </label>
-
-              
-<select
-  value={pollutant}
-  onChange={(event) => {
-    setPollutant(event.target.value);
-  }}
->
-  <option value="pm25">PM2.5</option>
-  <option value="pm10">PM10</option>
-  <option value="no2">NO₂</option>
-  <option value="so2">SO₂</option>
-  <option value="co">CO</option>
-  <option value="o3">O₃</option>
-</select>
-
-
-
-              <button
-                type="button"
-                onClick={downloadSampleData}
-                disabled={features.length === 0}
-                className="rounded-md border border-[#1F2937] bg-[#0B1117] px-3 py-2 text-xs font-medium text-slate-300 transition hover:border-[#38BDF8] hover:text-[#38BDF8] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Download Data
-              </button>
-              <div className="mt-4 flex flex-wrap items-center gap-3">
-  
-  <span className="text-xs uppercase tracking-wider text-slate-500">
-    Compare
-  </span>
-
-  {/* CITY A */}
-  <CitySearchSelect
-    cities={cities}
-    value={cityA}
-    onChange={(city) => {
-    setCityA(city);
-    setSelectedCity(city);
-  }}
-
-    placeholder="Search/select city A"
-  />
-
-  <span className="text-xs text-slate-600">
-    vs
-  </span>
-
-  {/* CITY B */}
-  <CitySearchSelect
-    cities={cities}
-    value={cityB}
-    onChange={setCityB}
-    placeholder="Search/select city B"
-  />
-</div>
-</div>
-
-{cityA && cityB && (
-  <div className="mt-4 rounded-lg border border-[#1F2937] bg-[#0B1117] p-4">
-    {(() => {
-      const featureA = features.find(
-        (feature) =>
-          feature.properties.city === cityA
-      );
-
-      const featureB = features.find(
-        (feature) =>
-          feature.properties.city === cityB
-      );
-
-      if (!featureA || !featureB) {
-        return (
-          <p className="text-sm text-slate-500">
-            Comparison data unavailable.
-          </p>
-        );
-      }
-
-      const difference =
-        featureA.properties.value -
-        featureB.properties.value;
-
-      const percentage =
-        featureB.properties.value !== 0
-          ? (difference /
-              featureB.properties.value) *
-            100
-          : 0;
-
-      return (
-        <div>
-          <div className="text-xs uppercase tracking-wider text-slate-500">
-            CITY COMPARISON
-          </div>
-
-          <div className="mt-3 grid grid-cols-2 gap-4">
-            <div>
-              <div className="text-sm text-slate-400">
-                {cityA}
-              </div>
-
-              <div className="mt-1 text-2xl font-semibold text-[#38BDF8]">
-                {featureA.properties.value}
-              </div>
-
-              <div className="text-xs text-slate-500">
-                {featureA.properties.unit}
-              </div>
-            </div>
-
-            <div>
-              <div className="text-sm text-slate-400">
-                {cityB}
-              </div>
-
-              <div className="mt-1 text-2xl font-semibold text-[#818CF8]">
-                {featureB.properties.value}
-              </div>
-
-              <div className="text-xs text-slate-500">
-                {featureB.properties.unit}
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 border-t border-[#1F2937] pt-3 text-sm text-slate-300">
-            {cityA} is{" "}
-            <span className="font-semibold text-white">
-              {Math.abs(percentage).toFixed(1)}%
-            </span>{" "}
-            {difference >= 0
-              ? "higher"
-              : "lower"}{" "}
-            than {cityB}.
-          </div>
+          <span>
+            Source: OpenAQ
+            {features.some(
+              (feature) =>
+                feature.properties
+                  .fallback,
+            )
+              ? " • Fallback data"
+              : " • Live"}
+          </span>
         </div>
-      );
-    })()}
-  </div>
-)}
 
+        <button
+          type="button"
+          onClick={() =>
+            setIntelligenceOpen(true)
+          }
+          className="flex items-center gap-2 rounded-lg border border-[#38BDF8]/40 px-4 py-2 text-xs font-semibold text-[#38BDF8] transition hover:bg-[#38BDF8]/10 focus:outline-none focus:ring-2 focus:ring-[#38BDF8]/40"
+        >
+          <SlidersHorizontal className="h-4 w-4" />
 
+          Intelligence Panel
+        </button>
+      </div>
+
+      {/* =====================================================
+          MAP
+          ===================================================== */}
+
+      <section className="relative border-b border-[#1F2937] bg-[#07131F]">
+
+        <div className="relative h-[calc(138vh-235px)] min-h-[500px] w-full overflow-hidden">
+
+          {/* ERROR */}
+
+          {error ? (
+            <div className="flex h-full items-center justify-center px-6 text-center">
+              <div>
+                <p className="text-red-400">
+                  {error}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setRefreshKey(
+                      (value) =>
+                        value + 1,
+                    )
+                  }
+                  className="mt-4 rounded-lg border border-[#38BDF8] px-4 py-2 text-sm text-[#38BDF8] transition hover:bg-[#38BDF8]/10 focus:outline-none focus:ring-2 focus:ring-[#38BDF8]/40"
+                >
+                  Try again
+                </button>
+              </div>
             </div>
-          
 
-          {/* MAP CARD */}
-          <div className="h-[600px] min-h-[500px] overflow-hidden rounded-xl border border-[#1F2937] bg-[#0B1117]">
+          ) : loading ? (
 
-           {error ? (
-  <div className="flex h-full items-center justify-center">
-    <div className="max-w-md text-center">
-      <p className="text-red-400">
-        {error}
-      </p>
+            /* LOADING */
 
-      <p className="mt-2 text-sm text-slate-500">
-        The air-quality service is currently
-        unavailable.
-      </p>
-    </div>
-  </div>
-) : loading ? (
-  <div className="flex h-full items-center justify-center">
-    <div className="text-center">
-      <div className="text-sm uppercase tracking-wider text-[#38BDF8]">
-        Loading air-quality data
-      </div>
+            <div className="flex h-full items-center justify-center">
+              <div className="text-center">
 
-      <div className="mt-2 text-xs text-slate-500">
-        Preparing map and intelligence layer...
-      </div>
-    </div>
-  </div>
-) : features.length === 0 ? (
-  <div className="flex h-full items-center justify-center">
-    <div className="text-center">
-      <p className="text-sm text-slate-300">
-        No air-quality observations available.
-      </p>
+                <RefreshCw className="mx-auto h-8 w-8 animate-spin text-[#38BDF8]" />
 
-      <p className="mt-2 text-xs text-slate-500">
-        Try another pollutant or refresh the data.
-      </p>
-    </div>
-  </div>
-) : (
-  <AirQualityMap
-  features={features}
-  pollutant={pollutant}
-  onCitySelect={setSelectedCity}
-/>
-)}
+                <p className="mt-4 text-sm text-slate-400">
+                  Loading global air-quality
+                  observations...
+                </p>
+              </div>
+            </div>
 
-          </div>
-          <div className="mt-5">
-            <AirQualityChart
-              data={chartData}
+          ) : features.length === 0 ? (
+
+            /* EMPTY */
+
+            <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-400">
+              No air-quality observations
+              available.
+            </div>
+
+          ) : (
+
+            /* MAP */
+
+            <AirQualityMap
+              features={features}
               pollutant={pollutant}
+              onCitySelect={
+                handleCitySelect
+              }
+              showSensors={
+                showSensors
+              }
+              showHeatmap={
+                showHeatmap
+              }
+            />
+          )}
+
+          {/* =================================================
+              MAP LEGEND
+              ================================================= */}
+
+          <div className="absolute right-4 top-4 z-[400] w-48 rounded-lg border border-slate-700/80 bg-[#0A1B29]/95 p-4 shadow-xl backdrop-blur">
+
+            <p className="text-xs font-semibold text-white">
+              {pollutant} (μg/m³)
+            </p>
+
+            <div className="mt-3 space-y-3 text-xs">
+
+              {[
+                {
+                  color:
+                    "bg-green-500",
+                  range: "0 - 12",
+                  label: "Good",
+                },
+                {
+                  color:
+                    "bg-yellow-400",
+                  range: "12 - 35",
+                  label: "Moderate",
+                },
+                {
+                  color:
+                    "bg-orange-400",
+                  range: "35 - 55",
+                  label:
+                    "Unhealthy (SG)",
+                },
+                {
+                  color:
+                    "bg-red-500",
+                  range: "55 - 150",
+                  label: "Unhealthy",
+                },
+                {
+                  color:
+                    "bg-purple-500",
+                  range: "150+",
+                  label:
+                    "Very Unhealthy",
+                },
+              ].map(
+                (item) => (
+                  <div
+                    key={item.range}
+                    className="flex items-center gap-2"
+                  >
+                    <span
+                      className={`h-3.5 w-3.5 rounded-full ${item.color} border border-white/30`}
+                    />
+
+                    <span className="text-slate-200">
+                      {item.range}
+                    </span>
+
+                    <span className="ml-auto text-[10px] text-slate-500">
+                      {item.label}
+                    </span>
+                  </div>
+                ),
+              )}
+            </div>
+          </div>
+
+          {/* =================================================
+              MAP CONTROLS
+              ================================================= */}
+
+          <div className="absolute bottom-4 left-4 z-[400] flex flex-col gap-2">
+
+            {/* SENSOR */}
+
+            <button
+              type="button"
+              onClick={() =>
+                setShowSensors(
+                  (value) =>
+                    !value,
+                )
+              }
+              className={`rounded-lg border p-3 shadow-lg backdrop-blur transition focus:outline-none focus:ring-2 focus:ring-[#38BDF8]/50 ${
+                showSensors
+                  ? "border-[#38BDF8] bg-[#38BDF8]/20 text-[#38BDF8]"
+                  : "border-slate-600 bg-[#0A1B29]/90 text-slate-400"
+              }`}
+              aria-label="Toggle sensors"
+              aria-pressed={
+                showSensors
+              }
+              title={
+                showSensors
+                  ? "Hide sensors"
+                  : "Show sensors"
+              }
+            >
+              <MapPin className="h-5 w-5" />
+            </button>
+
+            {/* HEATMAP */}
+
+            <button
+              type="button"
+              onClick={() =>
+                setShowHeatmap(
+                  (value) =>
+                    !value,
+                )
+              }
+              className={`rounded-lg border p-3 shadow-lg backdrop-blur transition focus:outline-none focus:ring-2 focus:ring-[#38BDF8]/50 ${
+                showHeatmap
+                  ? "border-[#38BDF8] bg-[#38BDF8]/20 text-[#38BDF8]"
+                  : "border-slate-600 bg-[#0A1B29]/90 text-slate-400"
+              }`}
+              aria-label="Toggle heatmap"
+              aria-pressed={
+                showHeatmap
+              }
+              title={
+                showHeatmap
+                  ? "Hide heatmap"
+                  : "Show heatmap"
+              }
+            >
+              <Layers className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* =================================================
+              CURRENT OBSERVATION
+              ================================================= */}
+
+          {currentFeature && (
+            <div className="absolute bottom-4 right-4 z-[400] hidden rounded-lg border border-[#1F2937] bg-[#0A1B29]/95 px-4 py-3 shadow-xl backdrop-blur sm:block">
+
+              <p className="text-[10px] uppercase tracking-[0.15em] text-slate-500">
+                Current observation
+              </p>
+
+              <div className="mt-1 flex items-baseline gap-2">
+
+                <span className="text-lg font-semibold text-white">
+                  {formatValue(
+                    currentFeature
+                      .properties
+                      .value,
+                  )}
+                </span>
+
+                <span className="text-xs text-slate-500">
+                  {currentFeature
+                    .properties
+                    .unit ||
+                    "—"}
+                </span>
+              </div>
+
+              <p
+                className={`mt-1 text-xs ${currentStatus.className}`}
+              >
+                {currentStatus.label}
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* =====================================================
+          CITY OVERVIEW
+          ===================================================== */}
+
+      <section className="border-b border-[#1F2937] bg-[#050D16] px-5 py-5">
+
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[#38BDF8]">
+              City Overview
+            </h2>
+
+            <p className="mt-1 text-xs text-slate-500">
+              Select a city to open its
+              intelligence profile.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={downloadCsv}
+            disabled={
+              features.length === 0
+            }
+            className="flex items-center gap-2 rounded-lg border border-[#38BDF8]/60 px-4 py-2 text-xs font-semibold text-[#38BDF8] transition hover:bg-[#38BDF8]/10 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-[#38BDF8]/40"
+          >
+            <Download className="h-4 w-4" />
+
+            Download CSV
+          </button>
+        </div>
+
+        {/* CITY CARDS */}
+
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+
+          {displayedCities.map(
+            (item) => {
+              const status =
+                getPollutionStatus(
+                  item.value,
+                );
+
+              const isSelected =
+                item.city ===
+                selectedCity;
+
+              return (
+                <button
+                  key={item.city}
+                  type="button"
+                  onClick={() =>
+                    handleCitySelect(
+                      item.city,
+                    )
+                  }
+                  className={`rounded-lg border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-[#38BDF8]/50 ${
+                    isSelected
+                      ? "border-[#38BDF8] bg-[#0C1C2B]"
+                      : "border-[#203447] bg-[#091521] hover:border-[#38BDF8]/70 hover:bg-[#0C1C2B]"
+                  }`}
+                  aria-label={`View air quality details for ${item.city}`}
+                >
+
+                  <div className="truncate text-sm font-semibold text-slate-200">
+                    {item.city}
+                  </div>
+
+                  <div
+                    className={`mt-2 text-2xl font-medium ${status.className}`}
+                  >
+                    {formatValue(
+                      item.value,
+                    )}
+                  </div>
+
+                  <div
+                    className={`mt-1 text-xs ${status.className}`}
+                  >
+                    {status.label}
+                  </div>
+
+                </button>
+              );
+            },
+          )}
+        </div>
+
+        {displayedCities.length ===
+          0 && (
+          <p className="py-6 text-center text-sm text-slate-500">
+            City data is unavailable.
+          </p>
+        )}
+      </section>
+
+      {/* =====================================================
+          INTELLIGENCE SLIDE-OVER
+          ===================================================== */}
+
+      {intelligenceOpen && (
+        <div className="fixed inset-0 z-[1000] flex justify-end">
+
+          {/* MAP-SIDE OVERLAY */}
+
+          <div
+            className="absolute inset-0 bg-black/20"
+            onClick={() =>
+              setIntelligenceOpen(
+                false,
+              )
+            }
+            aria-hidden="true"
+          />
+
+          {/* PANEL */}
+
+          <div className="relative z-[1001] h-full w-full max-w-xl border-l border-[#203447] bg-[#071019] shadow-2xl">
+
+            <IntelligenceSidebar
+              features={
+                selectedFeature
+                  ? [selectedFeature]
+                  : []
+              }
+              onClose={() =>
+                setIntelligenceOpen(
+                  false,
+                )
+              }
+              loading={loading}
+              selectedCity={
+                selectedCity
+              }
             />
           </div>
-        </section>
+        </div>
+      )}
 
-        {/* INTELLIGENCE SIDEBAR — 30% */}
-        <IntelligenceSidebar
-          features={features}
-          loading={loading}
-          selectedCity={selectedCity}
-        />
+      {/* =====================================================
+          SELECTED CITY INDICATOR
+          ===================================================== */}
 
-      </div>
+      {selectedCity &&
+        !intelligenceOpen && (
+          <button
+            type="button"
+            onClick={() =>
+              setIntelligenceOpen(
+                true,
+              )
+            }
+            className="fixed bottom-5 right-5 z-[900] flex items-center gap-2 rounded-full border border-[#38BDF8]/50 bg-[#0A1B29] px-5 py-3 text-sm text-[#38BDF8] shadow-xl focus:outline-none focus:ring-2 focus:ring-[#38BDF8]/50"
+          >
+
+            <MapPin className="h-4 w-4" />
+
+            {selectedCity}
+
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label="Clear selected city"
+              onClick={(event) => {
+                event.stopPropagation();
+
+                setSelectedCity("");
+              }}
+              onKeyDown={(event) => {
+                if (
+                  event.key ===
+                    "Enter" ||
+                  event.key ===
+                    " "
+                ) {
+                  event.preventDefault();
+
+                  event.stopPropagation();
+
+                  setSelectedCity("");
+                }
+              }}
+              className="rounded-full p-1 transition hover:bg-white/10"
+            >
+              <X className="h-4 w-4" />
+            </span>
+          </button>
+        )}
     </main>
-  ); 
+  );
 }

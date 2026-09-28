@@ -13,18 +13,24 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Air Quality Heatmap | Real Rails Data & Intelligence",
+  title: "Real Rails | Air Quality Heatmap",
   description:
-    "Interactive air quality intelligence dashboard for pollution, population exposure, and city comparison.",
+    "Real-time pollution and exposure intelligence dashboard.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full bg-[#030a12]">
+        {children}
+      </body>
     </html>
   );
 }
