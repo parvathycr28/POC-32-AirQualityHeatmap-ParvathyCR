@@ -18,9 +18,7 @@ type AirQualityMapProps = {
   onCitySelect?: (city: string) => void;
   showSensors?: boolean;
   showHeatmap?: boolean;
-  onLoadPopulation?: (
-    feature: AirQualityFeature
-  ) => Promise<number | null>;
+
 };
 
 export default function AirQualityMap({
@@ -29,7 +27,7 @@ export default function AirQualityMap({
   onCitySelect,
   showSensors = true,
   showHeatmap = true,
-  onLoadPopulation,
+  
 }: AirQualityMapProps) {
   return (
     <LeafletMap
@@ -38,7 +36,7 @@ export default function AirQualityMap({
       onCitySelect={onCitySelect}
       showSensors={showSensors}
       showHeatmap={showHeatmap}
-      onLoadPopulation={onLoadPopulation}
+      
     />
   );
 }
